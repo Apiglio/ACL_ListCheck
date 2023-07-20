@@ -36,8 +36,9 @@ type
     property Checked:boolean read FChecked write FChecked;
     property Unfold:boolean read FUnfold write FUnfold;
     property DisplayName:string read GetDispName write FDispName;
+    property Data:TObject read FData write FData;
   public
-    function AddItem(AName:string):TListCheckNode;
+    function AddItem(AName:string;AData:TObject=nil):TListCheckNode;
     function DeleteItem(AName:string):boolean;
     function RenameItem(OldName,NewName:string):boolean;
     procedure Clear;
@@ -59,16 +60,26 @@ type
     CapsRect:TRect;
   end;
   TListCheckIconState = (lconUnfold, lconFold, lconChecked, lconUnChecked);
+  TListCheckItemCheckedEvent = procedure(Sender:TObject;Item:TListCheckNode) of object;
 
   TCustomListCheck = class(TCustomPanel)
   private
     FRoot:TListCheckNode;
     FRegions:array of TListCheckRegion;
     FFirstOrder:Integer;//第一个显示的项目的Order
+  private
+    FOnItemChecked:TListCheckItemCheckedEvent;
   public
-    ItemHeight:Integer;
-    ItemFont:TFont;
-    property Font:TFont read ItemFont write ItemFont;
+    FItemHeight:Integer;
+    FItemGap:Integer;
+    FItemFont:TFont;
+    FItemColor:TColor;
+    property ItemFont:TFont read FItemFont write FItemFont;
+    property ItemHeight:Integer read FItemHeight write FItemHeight;
+    property ItemGap:Integer read FItemGap write FItemGap;
+    property ItemColor:TColor read FItemColor write FItemColor;
+  public
+    property OnItemChecked:TListCheckItemCheckedEvent read FOnItemChecked write FOnItemChecked;
   private
     procedure UpdateRegion;
     procedure Paint; override;
@@ -79,6 +90,7 @@ type
 
   public
     property Root:TListCheckNode read FRoot;
+
   public
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
@@ -109,8 +121,11 @@ type
     property DragKind;
     property DragMode;
     property Enabled;
-    property Font;
     property FullRepaint;
+    property ItemColor;
+    property ItemFont;
+    property ItemGap;
+    property ItemHeight;
     property ParentBidiMode;
     property ParentColor;
     property ParentFont;
@@ -208,7 +223,7 @@ begin
   else result:=FName;
 end;
 
-function TListCheckNode.AddItem(AName:string):TListCheckNode;
+function TListCheckNode.AddItem(AName:string;AData:TObject=nil):TListCheckNode;
 var tmp:TListCheckNode;
 begin
   tmp:=GetItemByName(AName);
@@ -216,6 +231,7 @@ begin
     tmp:=TListCheckNode.Create;
     tmp.FLevel:=FLevel+1;
     tmp.FName:=AName;
+    tmp.FData:=AData;
     FItems.Add(tmp);
   end;
   result:=tmp;
@@ -353,6 +369,7 @@ begin
   gap:=arect.Height div 5;
   canvas.Brush.Style:=bsClear;
   canvas.Brush.Color:=clWhite;
+  canvas.Pen.Color:=clBlack;
   canvas.Pen.Width:=1;
   new_rect:=Rect(arect.Left+gap,arect.Top+gap,arect.Right-gap,arect.Bottom-gap);
   xmid:=arect.Left + (arect.Right-arect.Left) div 2;
@@ -400,7 +417,7 @@ begin
       x:=(node.FLevel-1)*ItemHeight;
       y:=(node.FOrder-FFirstOrder-1)*ItemHeight;
       FRegions[pi-1].IconRect:=Rect(x,y,x+ItemHeight,y+ItemHeight);
-      FRegions[pi-1].CapsRect:=Rect(x+ItemHeight,y,Width,y+ItemHeight);
+      FRegions[pi-1].CapsRect:=Rect(x+ItemHeight,y,Width-ItemGap,y+ItemHeight);
     end;
   finally
     tmpList.Free;
@@ -410,11 +427,13 @@ end;
 procedure TCustomListCheck.Paint;
 var len,pi:integer;
     tmp:TListCheckNode;
-    rec:TRect;
+    rec,rec_ofs:TRect;
 begin
   Canvas.Brush.Color:=Color;
   Canvas.Brush.Style:=bsSolid;
-  Canvas.Font.Height:=ItemHeight;
+  Canvas.Pen.Color:=clBlack;
+  Canvas.Font.Assign(ItemFont);
+  Canvas.Font.Height:=ItemHeight-2*ItemGap;
   Canvas.Clear;
   UpdateRegion;
   len:=Length(FRegions);
@@ -434,7 +453,11 @@ begin
       end;
     end;
     rec:=FRegions[pi].CapsRect;
-    Canvas.TextRect(rec,rec.Left,rec.Top,tmp.DisplayName,ItemCaptionStyle);
+    rec_ofs:=Rect(rec.Left+ItemGap,rec.Top+ItemGap,rec.Right-ItemGap,rec.Bottom-ItemGap);
+    Canvas.Brush.Color:=ItemColor;
+    Canvas.Pen.Color:=ItemColor;
+    Canvas.Rectangle(rec_ofs);
+    Canvas.TextRect(rec_ofs,rec_ofs.Left+2,rec_ofs.Top,tmp.DisplayName,ItemCaptionStyle);
   end;
 end;
 
@@ -453,6 +476,7 @@ begin
     item:=FRegions[pi].Item;
     if item.ItemCount=0 then item.Checked:=not item.Checked
     else item.Unfold:=not item.Unfold;
+    if assigned(FOnItemChecked) then FOnItemChecked(Sender,item);
     break;
   end;
   Paint;
@@ -464,8 +488,36 @@ var tmpFO:integer;
 begin
   tmpFO:=FFirstOrder;
   if WheelDelta>0 then dec(tmpFO) else inc(tmpFO);
-  if (tmpFO>=0) and (tmpFO<1+Length(FRegions)-Height div ItemHeight) then FFirstOrder:=tmpFO;
-  Paint;
+  if (tmpFO>=0) and (tmpFO<1+Length(FRegions)-Height div ItemHeight) then begin
+    FFirstOrder:=tmpFO;
+    Paint;
+  end;
+end;
+
+procedure set_dsgn_time_data(ARoot:TListCheckNode);
+begin
+  with ARoot.AddItem('Item 1') do begin
+    FUnfold:=false;
+    AddItem('SubItem 1.1').Checked:=true;
+    AddItem('SubItem 1.2').DisplayName:='SubItem 1.2 (Disp.)';
+    AddItem('SubItem 1.3').Checked:=true;
+  end;
+  with ARoot.AddItem('Item 2') do begin
+    FUnfold:=false;
+    AddItem('SubItem 2.1').Checked:=true;
+    AddItem('SubItem 2.2');
+    AddItem('SubItem 2.3').DisplayName:='SubItem 2.3 (Disp.)';
+  end;
+  with ARoot.AddItem('Item 3') do begin
+    FUnfold:=true;
+    AddItem('SubItem 3.1').Checked:=true;
+    with AddItem('SubItem 3.2') do begin
+      AddItem('SubItem 3.2.a').Checked:=true;
+      AddItem('SubItem 3.2.b').Checked:=true;
+      AddItem('SubItem 3.2.c');
+    end;
+    AddItem('SubItem 3.3').DisplayName:='SubItem 2.3 (Disp.)';
+  end;
 end;
 
 constructor TCustomListCheck.Create(TheOwner: TComponent);
@@ -474,9 +526,16 @@ begin
   FRoot:=TListCheckNode.Create;
   FRoot.Unfold:=true;
   ItemFont:=TFont.Create;
+  ItemColor:=clWhite;
   FFirstOrder:=0;
+  ItemGap:=2;
+  ItemHeight:=25;
+  ItemFont.Name:='default';
+  ItemFont.Height:=21;
   OnMouseUp:=@MouseUp;
   OnMouseWheel:=@MouseWheel;
+  //设计模式默认显示
+  if csDesigning in ComponentState then set_dsgn_time_data(FRoot);
 end;
 
 destructor TCustomListCheck.Destroy;
