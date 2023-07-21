@@ -36,6 +36,7 @@ type
     property Checked:boolean read FChecked write FChecked;
     property Unfold:boolean read FUnfold write FUnfold;
     property DisplayName:string read GetDispName write FDispName;
+    property Name:string read FName write FName;
     property Data:TObject read FData write FData;
   public
     function AddItem(AName:string;AData:TObject=nil):TListCheckNode;
@@ -67,6 +68,7 @@ type
     FRoot:TListCheckNode;
     FRegions:array of TListCheckRegion;
     FFirstOrder:Integer;//第一个显示的项目的Order
+    FSelectItem:TListCheckNode;
   private
     FOnItemChecked:TListCheckItemCheckedEvent;
   public
@@ -74,10 +76,12 @@ type
     FItemGap:Integer;
     FItemFont:TFont;
     FItemColor:TColor;
+    FItemColorSelected:TColor;
     property ItemFont:TFont read FItemFont write FItemFont;
     property ItemHeight:Integer read FItemHeight write FItemHeight;
     property ItemGap:Integer read FItemGap write FItemGap;
     property ItemColor:TColor read FItemColor write FItemColor;
+    property ItemColorSelected:TColor read FItemColorSelected write FItemColorSelected;
   public
     property OnItemChecked:TListCheckItemCheckedEvent read FOnItemChecked write FOnItemChecked;
   private
@@ -90,8 +94,10 @@ type
 
   public
     property Root:TListCheckNode read FRoot;
-
+    property Selected:TListCheckNode read FSelectItem write FSelectItem;
   public
+    function PickItem(X,Y:Integer):TListCheckNode;
+    procedure Refresh;
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
   end;
@@ -123,6 +129,7 @@ type
     property Enabled;
     property FullRepaint;
     property ItemColor;
+    property ItemColorSelected;
     property ItemFont;
     property ItemGap;
     property ItemHeight;
@@ -147,6 +154,7 @@ type
     property OnExit;
     property OnGetSiteInfo;
     property OnGetDockCaption;
+    property OnItemChecked;
     property OnMouseEnter;
     property OnMouseLeave;
     property OnPaint;
@@ -454,8 +462,13 @@ begin
     end;
     rec:=FRegions[pi].CapsRect;
     rec_ofs:=Rect(rec.Left+ItemGap,rec.Top+ItemGap,rec.Right-ItemGap,rec.Bottom-ItemGap);
-    Canvas.Brush.Color:=ItemColor;
-    Canvas.Pen.Color:=ItemColor;
+    if tmp=FSelectItem then begin
+      Canvas.Brush.Color:=ItemColorSelected;
+      Canvas.Pen.Color:=ItemColorSelected;
+    end else begin
+      Canvas.Brush.Color:=ItemColor;
+      Canvas.Pen.Color:=ItemColor;
+    end;
     Canvas.Rectangle(rec_ofs);
     Canvas.TextRect(rec_ofs,rec_ofs.Left+2,rec_ofs.Top,tmp.DisplayName,ItemCaptionStyle);
   end;
@@ -472,8 +485,9 @@ begin
     if Y<=icon_rect.Top then continue;
     if Y>=icon_rect.Bottom then continue;
     if X<=icon_rect.Left then continue;
-    if X>=icon_rect.Right then continue;
     item:=FRegions[pi].Item;
+    FSelectItem:=item;
+    if X>=icon_rect.Right then continue;
     if item.ItemCount=0 then item.Checked:=not item.Checked
     else item.Unfold:=not item.Unfold;
     if assigned(FOnItemChecked) then FOnItemChecked(Sender,item);
@@ -484,14 +498,18 @@ end;
 
 procedure TCustomListCheck.MouseWheel(Sender: TObject; Shift: TShiftState;
   WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
-var tmpFO:integer;
+var tmpFO, len, shownCount:integer;
 begin
   tmpFO:=FFirstOrder;
   if WheelDelta>0 then dec(tmpFO) else inc(tmpFO);
-  if (tmpFO>=0) and (tmpFO<1+Length(FRegions)-Height div ItemHeight) then begin
-    FFirstOrder:=tmpFO;
-    Paint;
-  end;
+  len:=Length(FRegions);
+  shownCount:=Height div ItemHeight;
+  if (tmpFO+shownCount>len) and (WheelDelta<0) then exit;
+  if (tmpFO<0) and (WheelDelta>0) then exit;
+
+  FFirstOrder:=tmpFO;
+  Paint;
+
 end;
 
 procedure set_dsgn_time_data(ARoot:TListCheckNode);
@@ -520,13 +538,38 @@ begin
   end;
 end;
 
+function TCustomListCheck.PickItem(X,Y:Integer):TListCheckNode;
+var pi,len:integer;
+    caps_rect:TRect;
+begin
+  result:=nil;
+  if (X<0) or (X>=Width) then exit;
+  if (Y<0) or (Y>=Height) then exit;
+  len:=Length(FRegions);
+  for pi:=0 to len-1 do begin
+    caps_rect:=FRegions[pi].CapsRect;
+    if Y<=caps_rect.Top then continue;
+    if Y>=caps_rect.Bottom then continue;
+    if X<=caps_rect.Left then continue;
+    result:=FRegions[pi].Item;
+    exit;
+  end;
+end;
+
+procedure TCustomListCheck.Refresh;
+begin
+  Paint;
+end;
+
 constructor TCustomListCheck.Create(TheOwner: TComponent);
 begin
   inherited Create(TheOwner);
+  FSelectItem:=nil;
   FRoot:=TListCheckNode.Create;
   FRoot.Unfold:=true;
   ItemFont:=TFont.Create;
   ItemColor:=clWhite;
+  ItemColorSelected:=clHighlight;
   FFirstOrder:=0;
   ItemGap:=2;
   ItemHeight:=25;
