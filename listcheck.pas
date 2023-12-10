@@ -441,7 +441,11 @@ begin
   Canvas.Brush.Style:=bsSolid;
   Canvas.Pen.Color:=clBlack;
   Canvas.Font.Assign(ItemFont);
-  Canvas.Font.Height:=ItemHeight-2*ItemGap;
+
+  //Canvas.Font.Height:=ItemHeight-2*ItemGap;
+  Canvas.Font.Height:=(ItemHeight-2*ItemGap) * 96 div Screen.PixelsPerInch;
+  //PPI这些东西没有搞得很清楚，暂时这样解决
+
   Canvas.Clear;
   UpdateRegion;
   len:=Length(FRegions);
