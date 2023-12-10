@@ -447,6 +447,9 @@ begin
   //PPI这些东西没有搞得很清楚，暂时这样解决
 
   Canvas.Clear;
+  Canvas.Clear;
+  //两次擦除太笨了，先这样吧
+
   UpdateRegion;
   len:=Length(FRegions);
   for pi:=0 to len-1 do begin
