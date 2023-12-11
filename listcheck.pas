@@ -487,6 +487,7 @@ var pi,len:integer;
     item:TListCheckNode;
 begin
   len:=Length(FRegions);
+  FSelectItem:=nil;
   for pi:=0 to len-1 do begin
     icon_rect:=FRegions[pi].IconRect;
     if Y<=icon_rect.Top then continue;
